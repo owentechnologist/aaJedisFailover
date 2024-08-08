@@ -1,5 +1,3 @@
-Note this example was co-authored with Brandon Amos (another SA from Redis) - 
-
 This example showcases how Jedis can be configured to failover between two instances of Redis
 
 The Main class runs a loop where it writes to a key repeatedly.  If the redis instance it is talking to becomes unavailable, it  switches to a back up instance after a configured # of retries.
