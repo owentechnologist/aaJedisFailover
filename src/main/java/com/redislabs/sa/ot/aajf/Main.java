@@ -44,7 +44,7 @@ import java.util.function.Consumer;
  mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-12001.bamos1-tf-us-west-2-cluster.redisdemo.com --port 12001"
 
  below is an example of providing the args for a failover scenario:
- mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--failover true --host FIXME --port FIXME --password FIXME --host2 FIXME --port2 FIXME --password2 FIXME"
+ mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--failover true --host FIXME --port FIXME --password FIXME --host2 FIXME --port2 FIXME --password2 FIXME --maxconnections 100 --timebasedfailover false"
 
  */
 public class Main
@@ -143,6 +143,7 @@ class JedisConnectionHelper {
     //connection establishment
     static UnifiedJedis initRedisConnection(String[] args){
         boolean isFailover = false;
+        int maxConnections = 10;
         JedisConnectionHelperSettings settings = new JedisConnectionHelperSettings();
         JedisConnectionHelperSettings settings2 = null; // in case we are failing over
 
@@ -199,7 +200,12 @@ class JedisConnectionHelper {
             int argIndex = argList.indexOf("--failover");
             isFailover = Boolean.parseBoolean(argList.get(argIndex + 1));
         }
+        if (argList.contains("--maxconnections")) {
+            int argIndex = argList.indexOf("--maxconnections");
+            maxConnections = Integer.parseInt(argList.get(argIndex + 1));
+        }
         settings.setTestOnBorrow(true);
+        settings.setMaxConnections(maxConnections);
         settings.setConnectionTimeoutMillis(1200);
         settings.setNumberOfMinutesForWaitDuration(1);
         settings.setNumTestsPerEvictionRun(10);
@@ -223,7 +229,7 @@ class JedisConnectionHelper {
                 int argIndex = argList.indexOf("--user2");
                 settings2.setUserName(argList.get(argIndex + 1));
             }
-            if (argListAdded.contains("--password2")) {
+            if (argList.contains("--password2")) {
                 int argIndex = argList.indexOf("--password2");
                 settings2.setPassword(argList.get(argIndex + 1));
                 settings2.setUsePassword(true);
@@ -517,6 +523,10 @@ class JedisConnectionHelperSettings {
     }
 
     public void setMaxConnections(int maxConnections) {
+        this.maxConnections = maxConnections;
+    }
+
+    public void setMaxConnectionsWithDerivedMaxMinIdleSideEffects(int maxConnections) {
         this.maxConnections = maxConnections;
         this.setPoolMaxIdle(Math.round(maxConnections/2));
         this.setPoolMinIdle(Math.round(maxConnections/10));

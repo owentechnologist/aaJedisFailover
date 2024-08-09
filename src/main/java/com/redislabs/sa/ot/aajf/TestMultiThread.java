@@ -69,11 +69,12 @@ public class TestMultiThread implements Runnable{
                 shouldAnounceDeltaBetweenException=true;
                 exceptionTimeStamp=System.currentTimeMillis();
             }
+            /*  The following sleep is to give the client VM a rest when running many threads
             try{
                 Thread.sleep(20);
             }catch(Throwable t){
                 //do nothing
-            }
+            }*/
             // use the following to throw JedisDataException:
             //connectionInstance.set("tmt:string", "y");
             //connectionInstance.incr("tmt:string");
