@@ -1,6 +1,6 @@
-This example showcases how Jedis can be configured to failover between two instances of Redis
+This example showcases how Jedis can be configured to failover between two instances of Redis.  It also tests running multiple client Threads against one or more Redis endpoints.
 
-The Main class runs a loop where it writes to a key repeatedly.  If the redis instance it is talking to becomes unavailable, it  switches to a back up instance after a configured # of retries.
+The Main class executes a thread where it reads and writes to some keys repeatedly.  If the redis instance it is talking to becomes unavailable, it  switches to a back up instance after a configured # of retries.
 
 At the moment of the switch, a callback method is invoked which prints out the message indicating that the switch has ocurred.
 
@@ -47,6 +47,26 @@ mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--failover 
 Note that the multThreaded test publishes to a pubsub channel it is good to listen in and watch as it pauses and resumes during a failover event
 * from redis-cli (once you are connected to the backup database) issue:
 ``` 
-subscribe ps:Messages
+subscribe ps:messages
 ```
 Then, disable, kill the first database and watch as the messages pause and then pick up again as the client threads failover
+
+If you wish to target a database that exposes the ClusterAPI you can add this flag:
+``` 
+--useclusterapi true
+``` 
+
+The default number of tasks per thread is 1    you can adjust this by using this argument:
+``` 
+--taskcount 1000
+``` 
+
+The default number of client threads for the test is 10  you can adjust that by using this
+``` 
+--numclientthreads 100
+``` 
+The client will output to the screen a mesage with the latency in milliseconds for
+tasks that round-trip take more than 3000 milliseconds by defautlt.  Adjust this by using:
+``` 
+--latencythreshold 1000
+``` 

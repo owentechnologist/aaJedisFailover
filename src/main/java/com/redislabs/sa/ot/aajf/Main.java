@@ -43,103 +43,95 @@ import java.util.function.Consumer;
  mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host FIXME --port FIXME --password FIXME"
  mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-12001.bamos1-tf-us-west-2-cluster.redisdemo.com --port 12001"
 
+ If you wish to target a database that exposes the ClusterAPI you can add this flag:
+ --useclusterapi true
+
+ The default number of tasks per thread is 1    you can adjust this by using this argument:
+ --taskcount 1000
+
+ The default number of client threads for the test is 10  you can adjust that by using this
+ --numclientthreads 100
+
+ The client will output to the screen a mesage with the latency in milliseconds for
+ tasks that round-trip take more than 3000 milliseconds by defautlt.  Adjust this by using:
+ --latencythreshold 1000
+
  below is an example of providing the args for a failover scenario:
- mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--failover true --host FIXME --port FIXME --password FIXME --host2 FIXME --port2 FIXME --password2 FIXME --maxconnections 100 --timebasedfailover false"
+ mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--failover true --host FIXME --port FIXME --password FIXME --host2 FIXME --port2 FIXME --password2 FIXME --maxconnections 100 --timebasedfailover false --numclientthreads 300 --taskcount 500"
 
  */
 public class Main
 {
-    public static void main( String[] args )
-    {
+    public static void main( String[] args ){
         /**
          Only UnifiedJedis allows for auto-failover behaviors
          If --failover true is NOT passed in, a JedisPooled will be created
          ^ this is good, and allows for the best pooled connection management while also allowing
          the creation of the failover-capable UnifiedJedis when that is desired
          **/
-        UnifiedJedis connection= JedisConnectionHelper.initRedisConnection(args);
-        connection.set("hello","world");
-        System.out.println( connection.get("hello"));
-        System.out.println( connection.toString());
-        System.out.println("Starting Failover Test, writing to first cluster");
+        System.out.println("Starting Tests...\n");
 
-        int numberOfThreads = 300;
+        int numberOfThreads = 10;
         int taskCountPerThread = 250;
-        TestMultiThread.fireTest(connection,numberOfThreads, numberOfThreads+"ThreadTest", taskCountPerThread);
-        //end MultiThreadTest
+        int latencyThreshold = 3000; // milliseconds as measured round trip from client
+        boolean useClusterAPI=false;
 
-        //Do some LUA calls using SortedSets:
-        //public ZRangeParams(double min, double max) <-- byscore is implicit with this constructor
-        double min = 0; double max = 5000;
-        redis.clients.jedis.params.ZRangeParams params = null;
-        long opssCounter = 0;
-        long targetOppsCount = 200;
-        long startTime = System.currentTimeMillis();
-
-        for (int x = 1; x<(targetOppsCount+1); x++){
-            try{
-                min = x;
-                params = new redis.clients.jedis.params.ZRangeParams(min,max);
-                connection.zadd(connection+":key",x,connection+":"+x);
-                //System.out.println( );
-                connection.zrange(connection+":key",params);
-                safeIncrement(connection,"testIncrString","1",""+System.nanoTime());
-                safeIncrement(connection,"testIncrString","2",""+System.nanoTime());
-                opssCounter++;
-                // throw a DataException to cause failover See lines 353-357 or so where DataException is added
-                /* you may not want that behavior...
-                if(opssCounter==1000){
-                    connection.set("x", "y");
-                    connection.incr("x");
-                }*/
-            }catch(Throwable ste){
-                ste.printStackTrace();
-                try {
-                    Thread.sleep(2000);
-                } catch(Throwable t) {
-                    t.printStackTrace();
-                }
-            }
+        ArrayList<String> argList1 = new ArrayList<>(Arrays.asList(args));
+        if (argList1.contains("--numclientthreads")) {
+            int argIndex = argList1.indexOf("--numclientthreads");
+            numberOfThreads = (Integer.parseInt(argList1.get(argIndex + 1)));
         }
-        System.out.println("\n\nTime taken to execute "+opssCounter + " lua calls was "+((System.currentTimeMillis()-startTime)/1000)+" seconds");
-    }
+        if (argList1.contains("--taskcount")) {
+            int argIndex = argList1.indexOf("--taskcount");
+            taskCountPerThread = (Integer.parseInt(argList1.get(argIndex + 1)));
+        }
+        if (argList1.contains("--latencythreshold")) {
+            int argIndex = argList1.indexOf("--latencythreshold");
+            latencyThreshold = (Integer.parseInt(argList1.get(argIndex + 1)));
+        }
+        if (argList1.contains("--useclusterapi")) {
+            int argIndex = argList1.indexOf("--useclusterapi");
+            useClusterAPI = (Boolean.parseBoolean(argList1.get(argIndex + 1)));
+        }
+        //try test with default connection object:
+        String host = "redis-10900.re-cluster1.ps-redislabs.org";
+        int port = 10900;
+        //no AOF:
+        host = "redis-11000.re-cluster1.ps-redislabs.org";
+        port = 11000;
+        //JedisPooled defaultConnection = new JedisPooled(host,port);
+        //TestMultiThread.fireTest(defaultConnection,numberOfThreads, numberOfThreads+":DefaultConnectionTest", taskCountPerThread);
 
-    static void safeIncrement(UnifiedJedis jedis,String stringKeyName, String routingValue, String uuid) {
-        //SortedSet API offers ZCARD and ZCOUNT:
-        //stringKeyName is the String being incremented
-        //routingValue is the value added to the string keyname to route it to a slot in redis
-        // a co-located SortedSet key is derived from that string keyname and routingValue
-        //if string keyname is bob and routingValue is 1 sortedSet keyname is z:bob{1}
-        //args to script are:
-        //routingValue, (used to route execution of the script to a shard)
-        //stringKeyName,
-        //uuid for current update attempt,
-        //incr_amnt (in case we don't just want to add a single integer to the string counter)
-        //this script removed any entries stored in the SortedSet that are older than
-        //current time in seconds - 100 seconds
-        String luaScript =
-                "local stringKeyNameWithRouting = ARGV[1]..'{'..KEYS[1]..'}' "+
-                        "local ssname = 'z:'..stringKeyNameWithRouting "+
-                        "local uuid = ARGV[2] "+
-                        "local incr_amnt = ARGV[3] "+
-                        "local ts_score = redis.call('TIME')[1] "+
-                        "local result = 'duplicate [fail]' "+
-                        "if redis.call('ZINCRBY',ssname,ts_score,uuid) == ts_score then "+
-                        "redis.call('incrby',stringKeyNameWithRouting,incr_amnt) "+
-                        "redis.call('ZREMRANGEBYRANK', ssname, (ts_score-100), 0) "+
-                        "result = 'success' end return {ssname,result}";
-        long timestamp = System.currentTimeMillis();
-        Object luaResponse = jedis.eval(luaScript,1,routingValue,stringKeyName,""+uuid,"100");
-        //System.out.println("\nResults from Lua: [SortedSetKeyName] [result]  \n"+luaResponse);
-        //System.out.println("\n\nrunning the lua script with dedup and incr logic took "+(System.currentTimeMillis()-timestamp+" milliseconds"));
-    }
+        // to match the CLusterAPI pool should have 3X default connections (24)
+        UnifiedJedis connection= JedisConnectionHelper.initRedisConnection(args);
+        TestMultiThread.fireTest(connection,numberOfThreads, numberOfThreads+":DefaultConnectionTest", taskCountPerThread, latencyThreshold);
+        if(useClusterAPI){
+            //Begin ClusterAPI test:
+            JedisCluster jcConnection = JedisConnectionHelper.getJedisClusterConnection(args);
+            TestMultiThread.fireTest(jcConnection,numberOfThreads,numberOfThreads+":ClusteredTest",taskCountPerThread, latencyThreshold);
+            //end MultiThreadTest
+        }
 
+        //POSSIBLE FUTURE WORK:
+        //Do some LUA calls using SortedSets: The class LittleLua is designed to allow this
+    }
 }
 
 class JedisConnectionHelper {
     final PooledConnectionProvider connectionProvider;
     final JedisPooled jedisPooled;
     final UnifiedJedis unifiedJedis;
+
+    /**
+     following private static attributes borrowed from Jedis github tests...
+     */
+    private static final int DEFAULT_TIMEOUT = 2000;
+    private static final int DEFAULT_REDIRECTIONS = 5;
+    private static final ConnectionPoolConfig DEFAULT_POOL_CONFIG = new ConnectionPoolConfig();
+    private static final DefaultJedisClientConfig DEFAULT_CLIENT_CONFIG
+            = DefaultJedisClientConfig.builder().build();
+
+    private static JedisConnectionHelperSettings statSettings = null;
     //connection establishment
     static UnifiedJedis initRedisConnection(String[] args){
         boolean isFailover = false;
@@ -215,6 +207,8 @@ class JedisConnectionHelper {
         settings.setTestOnReturn(false); // if idle, they will be mostly removed anyway
         settings.setTestOnCreate(true);
 
+        //setting statSettings to the first settings object in case we are not using two sets:
+        statSettings=settings;
         if (isFailover){
             settings2 = new JedisConnectionHelperSettings();
             if (argList.contains("--host2")) {
@@ -271,6 +265,33 @@ class JedisConnectionHelper {
             }
             return (UnifiedJedis) connectionHelper.getPooledJedis();
         }
+    }
+
+    static JedisCluster getJedisClusterConnection(String[] args){
+        String host = "redis-12000.re-cluster2.ps-redislabs.org";
+        int port = 12000;
+
+        ArrayList<String> argList = new ArrayList<>(Arrays.asList(args));
+        if (argList.contains("--clusterhost")) {
+            int argIndex = argList.indexOf("--clusterhost");
+            host=(argList.get(argIndex + 1));
+        }
+        if (argList.contains("--clusterport")) {
+            int argIndex = argList.indexOf("--clusterport");
+            port=(Integer.parseInt(argList.get(argIndex + 1)));
+        }
+
+        HostAndPort hostAndport = new HostAndPort(host,port);
+        // Attempt to use same pool settings as the statSettings for closer comparison:
+        //ConnectionPoolConfig statConfig = new ConnectionPoolConfig();
+        JedisCluster jc = new JedisCluster(hostAndport, DEFAULT_CLIENT_CONFIG, DEFAULT_REDIRECTIONS,
+                DEFAULT_POOL_CONFIG);
+        System.out.println("***>  This many nodes in this cluster: "+jc.getClusterNodes().size());
+        for(String item : jc.getClusterNodes().keySet()) {
+            System.out.println("***>  "+item);
+        }
+
+        return jc;
     }
 
     /**
