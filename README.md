@@ -33,6 +33,35 @@ Each of the JedisConnectionHelperSettings objects holds the information to conne
         this.jedisPooled = null;
     }  
 ```
+At the end of the test you can check for the values each thread has assigned to their String keys and the expected value:
+
+In the SortedSet for each test we see the entries in the SortedSet as "<thread#>:<actualValueReadFromRedis>"
+
+Below each entry in the SortedSet we see the expected value calculated within that thread with a local variable
+
+```
+> ZRANGE Z:TestMultiThread:ExpectedValues:10:DefaultConnectionTest 0 -1 WITHSCORES
+1) "0:900"
+2) "900"
+3) "1:900"
+4) "900"
+5) "2:900"
+6) "900"
+7) "3:900"
+8) "900"
+9) "4:900"
+10) "900"
+11) "5:900"
+12) "900"
+13) "6:900"
+14) "900"
+15) "7:900"
+16) "900"
+17) "8:900"
+18) "900"
+19) "9:900"
+20) "900"
+```
 
 A sample run of this program where two instances of Redis are utilized would be:
 

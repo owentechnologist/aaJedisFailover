@@ -34,6 +34,7 @@ public class TestMultiThread implements Runnable{
 
     public static void fireTest(UnifiedJedis ufJedis,int howManyThreads, String testType, int numberOfTasks, int latencyThreshold){
         ufJedis.del("TestMultiThread:"+testType+"Threads:Complete");//cleanup for this test
+        ufJedis.del("Z:TestMultiThread:ExpectedValues:"+testType);//cleanup for this test
         long startTime = System.currentTimeMillis();
         System.out.println("\n\tHere come the threads for test: "+testType+"\n");
         for(int x=0;x<howManyThreads;x++){
@@ -62,7 +63,14 @@ public class TestMultiThread implements Runnable{
 
     @Override
     public void run() {
+        //cleanup old keys to help measure results:
+        String keyName = "tmt:string:"+this.testThreadNumber;
+        long expectedTotalIncrValue = 0; // update this during test
+        connectionInstance.del(keyName);
+
+        //NOTE - set this as a startup parameter:
         boolean shouldAnounceDeltaBetweenException = false;
+
         long exceptionTimeStamp = 0;
         long taskExecutionStartTime = 0;
         for(long x=0;x<numberOfTasks;x++){
@@ -70,7 +78,6 @@ public class TestMultiThread implements Runnable{
             taskExecutionStartTime = System.currentTimeMillis();
             try{
                 //connectionInstance.publish("ps:Messages",connectionName+":testThread# "+this.testThreadNumber+" message #"+x);
-                String keyName = "tmt:string:"+this.testThreadNumber;
                 boolean pipelined=false;
                 if(x%20==0){
                     pipelined=true;
@@ -88,14 +95,16 @@ public class TestMultiThread implements Runnable{
                     p.expire(keyName,300,redis.clients.jedis.args.ExpiryOption.NX);
                     p.sync();
                     p.close();
+                    expectedTotalIncrValue=expectedTotalIncrValue+x;
                     //System.out.println("pipeline done...");
                 }else{
                     for(int t = 0;t<100;t++){
                         connectionInstance.get(keyName);
                     }
                 }
-                connectionInstance.publish("ps:messages","THREAD "+this.testThreadNumber+" task # "+x+" completed");
-
+                if(x%10==0){ // reduce the noise...
+                    connectionInstance.publish("ps:messages","THREAD "+this.testThreadNumber+" task # "+x+" completed");
+                }
                 if (shouldAnounceDeltaBetweenException) {
                     //System.out.println("THREAD "+this.testThreadNumber+" First Succesful write after exception delay in millis was...: "+(System.currentTimeMillis()-exceptionTimeStamp));
                     shouldAnounceDeltaBetweenException=false;
@@ -121,5 +130,6 @@ public class TestMultiThread implements Runnable{
             //connectionInstance.incr("tmt:string");
         }
         connectionInstance.incr("TestMultiThread:"+this.testType+"Threads:Complete");
+        connectionInstance.zadd("Z:TestMultiThread:ExpectedValues:"+this.testType,Double.parseDouble(expectedTotalIncrValue+""),this.testThreadNumber+":"+connectionInstance.get(keyName));
     }
 }
