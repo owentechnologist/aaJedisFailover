@@ -64,6 +64,8 @@ import java.util.function.Consumer;
 
  --isusinglua true
 
+ --maxconnections 500
+
  below is an example of providing the args for a failover scenario:
  mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--failover true --host FIXME --port FIXME --password FIXME --host2 FIXME --port2 FIXME --password2 FIXME --maxconnections 100 --timebasedfailover false --numclientthreads 300 --taskcount 500"
 
@@ -221,7 +223,7 @@ class JedisConnectionHelper {
         }
         if (argList.contains("--maxconnections")) {
             int argIndex = argList.indexOf("--maxconnections");
-            maxConnections = Integer.parseInt(argList.get(argIndex + 1));
+            settings.setMaxConnections(Integer.parseInt(argList.get(argIndex + 1)));
         }
 
         //setting statSettings to the first settings object in case we are not using two sets:

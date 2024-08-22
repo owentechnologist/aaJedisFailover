@@ -3,6 +3,39 @@ import redis.clients.jedis.*;
 
 public class LittleLua{
 
+    String jsonAsString = "{\"nc:PersonAgeMeasure\": {\"nc:MeasureIntegerValue\": 14,\"nc:TimeUnitCode\": \"ANN\"},\"j:PersonHairColorCode\": \"BRO\",\"nc:PersonName\": {\"nc:PersonGivenName\": \"Mortimer\",\"nc:PersonSurName\": \"Smith\",\"nc:PersonNameSuffixText\": \"Sr\",\"nc:PersonPreferredName\": \"Morty\"}}";
+    /**
+     Note that in this method two calls are made that report the length of the List used
+     This is silly, (only one is needed) but, it allows for the use of Transactions which is a useful bit of instruction.
+     */
+    public int playWithLists(UnifiedJedis connection,long taskNumber,long testThreadNumber){
+        int responseValue = 0;//0 means do not change anything -1 means a retry is necessary
+        String sharedListName = "sharedList{"+(taskNumber%100)+"}";
+        Transaction t = connection.multi();
+        Response<Long> result1 = t.lpush(sharedListName,jsonAsString+""+taskNumber);
+        Response<Long> listLength = t.llen(sharedListName);
+        t.exec();
+        if(listLength.get().longValue()!=result1.get().longValue()){
+            System.out.println("\nmismatch of listLength of Redis list: "+listLength.get()+"  "+result1.get());
+        }
+        java.util.List<String> theList = null;
+        try{
+            theList=connection.lrange(sharedListName,(listLength.get()-2),listLength.get()+10);
+            long listSize = 0;
+            if(theList!=null){
+                listSize=theList.size();
+            }
+            String lrangeResponse = theList.get((int)(listSize-1));
+        }catch(Exception e){
+            System.out.println("***> oops!  Thread# "+testThreadNumber+":  While working with the list key named: "+sharedListName);
+            e.printStackTrace();
+            System.out.println("The list key named: "+sharedListName+" has a length of: "+connection.llen(sharedListName));
+            responseValue=-1;
+        }
+        t.close(); // returns the underlying connection to the pool
+        return responseValue;
+    }
+
     public void playWithSortedSets(UnifiedJedis connection, long x){
         //public ZRangeParams(double min, double max) <-- byscore is implicit with this constructor
         double min = x; double max = 5000000;
@@ -52,5 +85,4 @@ public class LittleLua{
         //System.out.println("\nResults from Lua: [SortedSetKeyName] [result]  \n"+luaResponse);
         //System.out.println("\n\nrunning the lua script with dedup and incr logic took "+(System.currentTimeMillis()-timestamp+" milliseconds"));
     }
-
 }

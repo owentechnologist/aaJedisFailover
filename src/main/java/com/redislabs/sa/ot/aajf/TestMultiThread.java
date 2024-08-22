@@ -70,16 +70,20 @@ public class TestMultiThread implements Runnable{
     @Override
     public void run() {
         if(isUsingLUA){
+            LittleLua ll = new LittleLua();
             for(long x=0;x<numberOfTasks;x++){
-                LittleLua ll = new LittleLua();
-                ll.playWithSortedSets(connectionInstance,x);
+                //ll.playWithSortedSets(connectionInstance,x);
+                int responseValue = ll.playWithLists(connectionInstance,x,this.testThreadNumber);
+                x=x+responseValue;//if a failure occured -1 will be returned causing this task to reexecute
             }
             //cleanup with expiry of all keys used:
             for(int d=0;d<100;d++){
                 String sKeyName = "testIncrString{"+d+"}";
                 String zKeyName = "z:testIncrString{"+d+"}";
+                String lKeyName = "sharedList{"+(d%100)+"}";
                 connectionInstance.expire(sKeyName,300,redis.clients.jedis.args.ExpiryOption.NX);
                 connectionInstance.expire(zKeyName,300,redis.clients.jedis.args.ExpiryOption.NX);
+                connectionInstance.expire(lKeyName,300,redis.clients.jedis.args.ExpiryOption.NX);
             }
             connectionInstance.expire(connectionInstance+":key",300,redis.clients.jedis.args.ExpiryOption.NX);
 
