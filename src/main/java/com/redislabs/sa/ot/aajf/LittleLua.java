@@ -3,43 +3,27 @@ import redis.clients.jedis.*;
 
 public class LittleLua{
 
-    public void playWithSortedSets(UnifiedJedis connection){
+    public void playWithSortedSets(UnifiedJedis connection, long x){
         //public ZRangeParams(double min, double max) <-- byscore is implicit with this constructor
-        double min = 0; double max = 5000;
+        double min = x; double max = 5000000;
         redis.clients.jedis.params.ZRangeParams params = null;
-        long opssCounter = 0;
-        long targetOppsCount = 200;
-        long startTime = System.currentTimeMillis();
-
-        for (int x = 1; x<(targetOppsCount+1); x++){
-            try{
-                min = x;
-                params = new redis.clients.jedis.params.ZRangeParams(min,max);
-                connection.zadd(connection+":key",x,connection+":"+x);
-                //System.out.println( );
-                connection.zrange(connection+":key",params);
-                safeIncrement(connection,"testIncrString","1",""+System.nanoTime());
-                safeIncrement(connection,"testIncrString","2",""+System.nanoTime());
-                opssCounter++;
-                // throw a DataException to cause failover See lines 353-357 or so where DataException is added
-                /* you may not want that behavior...
-                if(opssCounter==1000){
-                    connection.set("x", "y");
-                    connection.incr("x");
-                }*/
-            }catch(Throwable ste){
-                ste.printStackTrace();
-                try {
-                    Thread.sleep(2000);
-                } catch(Throwable t) {
-                    t.printStackTrace();
-                }
+        try{
+            params = new redis.clients.jedis.params.ZRangeParams(min,max);
+            connection.zadd(connection+":key",x,connection+":"+x);
+            connection.zrange(connection+":key",params);
+            String routerVal = ""+(x%100);
+            luaIncrement(connection,"testIncrString",routerVal,""+System.nanoTime());
+        }catch(Throwable ste){
+            ste.printStackTrace();
+            try {
+                Thread.sleep(20);
+            } catch(Throwable t) {
+                t.printStackTrace();
             }
         }
-        System.out.println("\n\nTime taken to execute "+opssCounter + " lua calls was "+((System.currentTimeMillis()-startTime)/1000)+" seconds");
     }
 
-    public void safeIncrement(UnifiedJedis jedis,String stringKeyName, String routingValue, String uuid) {
+    public void luaIncrement(UnifiedJedis jedis,String stringKeyName, String routingValue, String uuid) {
         //SortedSet API offers ZCARD and ZCOUNT:
         //stringKeyName is the String being incremented
         //routingValue is the value added to the string keyname to route it to a slot in redis
@@ -68,6 +52,5 @@ public class LittleLua{
         //System.out.println("\nResults from Lua: [SortedSetKeyName] [result]  \n"+luaResponse);
         //System.out.println("\n\nrunning the lua script with dedup and incr logic took "+(System.currentTimeMillis()-timestamp+" milliseconds"));
     }
-
 
 }

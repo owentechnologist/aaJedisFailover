@@ -33,9 +33,9 @@ Each of the JedisConnectionHelperSettings objects holds the information to conne
         this.jedisPooled = null;
     }  
 ```
-At the end of the test you can check for the values each thread has assigned to their String keys and the expected value:
+At the end of the non-LUA test you can check for the values each thread has assigned to their String keys and the expected value:
 
-In the SortedSet for each test we see the entries in the SortedSet as "<thread#>:<actualValueReadFromRedis>"
+In the SortedSet for each non-LUA test we see the entries in the SortedSet as "<thread#>:<actualValueReadFromRedis>"
 
 Below each entry in the SortedSet we see the expected value calculated within that thread with a local variable
 
@@ -73,7 +73,7 @@ And with additional logging of the underlying circuitBreaker logic:
 mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--failover true --host mydb.host.1.org --port 10900 --host2 mydb.host.2.org --port2 10900" -Dorg.slf4j.simpleLogger.log.redis.clients.jedis=TRACE
 ```
 
-Note that the multThreaded test publishes to a pubsub channel it is good to listen in and watch as it pauses and resumes during a failover event
+Note that the multThreaded non-LUA test publishes to a pubsub channel it is good to listen in and watch as it pauses and resumes during a failover event
 * from redis-cli (once you are connected to the backup database) issue:
 ``` 
 subscribe ps:messages

@@ -10,6 +10,7 @@ public class TestMultiThread implements Runnable{
     int latencyThreshold=5000;//milliseconds as measured round trip from this client
     int numberOfTasks=1; // per thread
     String testType = "default";
+    boolean isUsingLUA = false;
     static volatile boolean exceptionCaught=false;
 
     public TestMultiThread setTestThreadNumber(int testThreadNumber){
@@ -27,19 +28,24 @@ public class TestMultiThread implements Runnable{
         return this;
     }
 
+    public TestMultiThread setIsUsingLUA(boolean isUsingLUA){
+        this.isUsingLUA = isUsingLUA;
+        return this;
+    }
+
     public TestMultiThread(UnifiedJedis ufJedis,String testType){
         this.connectionInstance = ufJedis;
         this.testType = testType;
     }
 
-    public static void fireTest(UnifiedJedis ufJedis,int howManyThreads, String testType, int numberOfTasks, int latencyThreshold){
+    public static void fireTest(UnifiedJedis ufJedis,int howManyThreads, String testType, int numberOfTasks, int latencyThreshold,boolean isUsingLUA){
         ufJedis.del("TestMultiThread:"+testType+"Threads:Complete");//cleanup for this test
         ufJedis.del("Z:TestMultiThread:ExpectedValues:"+testType);//cleanup for this test
         long startTime = System.currentTimeMillis();
         System.out.println("\n\tHere come the threads for test: "+testType+"\n");
         for(int x=0;x<howManyThreads;x++){
             System.out.print(x+" ");
-            new Thread(new TestMultiThread(ufJedis,testType).setLatencyThreshold(latencyThreshold).setTestThreadNumber(x).setNumberOfTasks(numberOfTasks)).start();
+            new Thread(new TestMultiThread(ufJedis,testType).setLatencyThreshold(latencyThreshold).setTestThreadNumber(x).setNumberOfTasks(numberOfTasks).setIsUsingLUA(isUsingLUA)).start();
         }
         int completedThreads = 0;
         while(completedThreads < howManyThreads){
@@ -49,7 +55,7 @@ public class TestMultiThread implements Runnable{
                 if(ufJedis.exists("TestMultiThread:"+testType+"Threads:Complete")){
                     completedThreads = Integer.parseInt(ufJedis.get("TestMultiThread:"+testType+"Threads:Complete"));
                     if(completedThreads>completedThreadsMark){
-                        System.out.println(completedThreads+" threads have completed their work...");
+                        System.out.println("\n"+completedThreads+" threads have completed their work...");
                     }
                 }
             }catch(Throwable t){
@@ -63,6 +69,31 @@ public class TestMultiThread implements Runnable{
 
     @Override
     public void run() {
+        if(isUsingLUA){
+            for(long x=0;x<numberOfTasks;x++){
+                LittleLua ll = new LittleLua();
+                ll.playWithSortedSets(connectionInstance,x);
+            }
+            //cleanup with expiry of all keys used:
+            for(int d=0;d<100;d++){
+                String sKeyName = "testIncrString{"+d+"}";
+                String zKeyName = "z:testIncrString{"+d+"}";
+                connectionInstance.expire(sKeyName,300,redis.clients.jedis.args.ExpiryOption.NX);
+                connectionInstance.expire(zKeyName,300,redis.clients.jedis.args.ExpiryOption.NX);
+            }
+            connectionInstance.expire(connectionInstance+":key",300,redis.clients.jedis.args.ExpiryOption.NX);
+
+            //announce end of this Thread's work:
+            connectionInstance.incr("TestMultiThread:"+this.testType+"Threads:Complete");
+        }else{
+            long expectedTotalIncrValue = doIncrAndReadStuff();
+            String keyName = "tmt:string:"+this.testThreadNumber;
+            connectionInstance.incr("TestMultiThread:"+this.testType+"Threads:Complete");
+            connectionInstance.zadd("Z:TestMultiThread:ExpectedValues:"+this.testType,Double.parseDouble(expectedTotalIncrValue+""),this.testThreadNumber+":"+connectionInstance.get(keyName));
+        }
+    }
+
+    long doIncrAndReadStuff(){
         //cleanup old keys to help measure results:
         String keyName = "tmt:string:"+this.testThreadNumber;
         long expectedTotalIncrValue = 0; // update this during test
@@ -129,7 +160,6 @@ public class TestMultiThread implements Runnable{
             //connectionInstance.set("tmt:string", "y");
             //connectionInstance.incr("tmt:string");
         }
-        connectionInstance.incr("TestMultiThread:"+this.testType+"Threads:Complete");
-        connectionInstance.zadd("Z:TestMultiThread:ExpectedValues:"+this.testType,Double.parseDouble(expectedTotalIncrValue+""),this.testThreadNumber+":"+connectionInstance.get(keyName));
+        return expectedTotalIncrValue;
     }
 }

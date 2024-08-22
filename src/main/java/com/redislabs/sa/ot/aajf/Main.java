@@ -56,6 +56,14 @@ import java.util.function.Consumer;
  tasks that round-trip take more than 3000 milliseconds by defautlt.  Adjust this by using:
  --latencythreshold 1000
 
+ Other possible args:
+
+ --connectiontimeoutmillis 2000
+
+ --requesttimeoutmillis 400
+
+ --isusinglua true
+
  below is an example of providing the args for a failover scenario:
  mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--failover true --host FIXME --port FIXME --password FIXME --host2 FIXME --port2 FIXME --password2 FIXME --maxconnections 100 --timebasedfailover false --numclientthreads 300 --taskcount 500"
 
@@ -75,6 +83,7 @@ public class Main
         int taskCountPerThread = 250;
         int latencyThreshold = 3000; // milliseconds as measured round trip from client
         boolean useClusterAPI=false;
+        boolean isUsingLua=false;
 
         ArrayList<String> argList1 = new ArrayList<>(Arrays.asList(args));
         if (argList1.contains("--numclientthreads")) {
@@ -93,23 +102,23 @@ public class Main
             int argIndex = argList1.indexOf("--useclusterapi");
             useClusterAPI = (Boolean.parseBoolean(argList1.get(argIndex + 1)));
         }
-        //try test with default connection object:
-        String host = "redis-10900.re-cluster1.ps-redislabs.org";
-        int port = 10900;
-        //no AOF:
-        host = "redis-11000.re-cluster1.ps-redislabs.org";
-        port = 11000;
+        if (argList1.contains("--isusinglua")) {
+            int argIndex = argList1.indexOf("--isusinglua");
+            isUsingLua = (Boolean.parseBoolean(argList1.get(argIndex + 1)));
+        }
         //JedisPooled defaultConnection = new JedisPooled(host,port);
-        //TestMultiThread.fireTest(defaultConnection,numberOfThreads, numberOfThreads+":DefaultConnectionTest", taskCountPerThread);
+        //TestMultiThread.fireTest(defaultConnection,numberOfThreads, numberOfThreads+":DefaultConnectionTest", taskCountPerThread, isUsingLua);
 
-        // to match the CLusterAPI pool should have 3X default connections (24)
-        UnifiedJedis connection= JedisConnectionHelper.initRedisConnection(args);
-        TestMultiThread.fireTest(connection,numberOfThreads, numberOfThreads+":DefaultConnectionTest", taskCountPerThread, latencyThreshold);
         if(useClusterAPI){
             //Begin ClusterAPI test:
             JedisCluster jcConnection = JedisConnectionHelper.getJedisClusterConnection(args);
-            TestMultiThread.fireTest(jcConnection,numberOfThreads,numberOfThreads+":ClusteredTest",taskCountPerThread, latencyThreshold);
+            TestMultiThread.fireTest(jcConnection,numberOfThreads,numberOfThreads+":ClusteredTest",taskCountPerThread, latencyThreshold, isUsingLua);
             //end MultiThreadTest
+        }else{
+            // to match the CLusterAPI pool should have 3X default connections (24)
+            // only use default if --useclusterapi false or non-existent:
+            UnifiedJedis connection= JedisConnectionHelper.initRedisConnection(args);
+            TestMultiThread.fireTest(connection,numberOfThreads, numberOfThreads+":DefaultConnectionTest", taskCountPerThread, latencyThreshold, isUsingLua);
         }
 
         //POSSIBLE FUTURE WORK:
@@ -138,6 +147,16 @@ class JedisConnectionHelper {
         int maxConnections = 10;
         JedisConnectionHelperSettings settings = new JedisConnectionHelperSettings();
         JedisConnectionHelperSettings settings2 = null; // in case we are failing over
+        settings.setTestOnBorrow(true);
+        settings.setMaxConnections(maxConnections);
+        settings.setConnectionTimeoutMillis(1200);//overidden by args
+        settings.setNumberOfMinutesForWaitDuration(1);
+        settings.setNumTestsPerEvictionRun(10);
+        settings.setPoolMaxIdle(5); //this means less stale connections
+        settings.setPoolMinIdle(0);
+        settings.setRequestTimeoutMillis(100);//overidden by args
+        settings.setTestOnReturn(false); // if idle, they will be mostly removed anyway
+        settings.setTestOnCreate(true);
 
         ArrayList<String> argList = new ArrayList<>(Arrays.asList(args));
         if (argList.contains("--host")) {
@@ -147,6 +166,14 @@ class JedisConnectionHelper {
         if (argList.contains("--port")) {
             int argIndex = argList.indexOf("--port");
             settings.setRedisPort(Integer.parseInt(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--connectiontimeoutmillis")) {
+            int argIndex = argList.indexOf("--connectiontimeoutmillis");
+            settings.setConnectionTimeoutMillis(Integer.parseInt(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--requesttimeoutmillis")) {
+            int argIndex = argList.indexOf("--requesttimeoutmillis");
+            settings.setRequestTimeoutMillis(Integer.parseInt(argList.get(argIndex + 1)));
         }
         if (argList.contains("--user")) {
             int argIndex = argList.indexOf("--user");
@@ -196,16 +223,6 @@ class JedisConnectionHelper {
             int argIndex = argList.indexOf("--maxconnections");
             maxConnections = Integer.parseInt(argList.get(argIndex + 1));
         }
-        settings.setTestOnBorrow(true);
-        settings.setMaxConnections(maxConnections);
-        settings.setConnectionTimeoutMillis(1200);
-        settings.setNumberOfMinutesForWaitDuration(1);
-        settings.setNumTestsPerEvictionRun(10);
-        settings.setPoolMaxIdle(5); //this means less stale connections
-        settings.setPoolMinIdle(0);
-        settings.setRequestTimeoutMillis(100);
-        settings.setTestOnReturn(false); // if idle, they will be mostly removed anyway
-        settings.setTestOnCreate(true);
 
         //setting statSettings to the first settings object in case we are not using two sets:
         statSettings=settings;
