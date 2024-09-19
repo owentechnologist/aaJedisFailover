@@ -173,9 +173,53 @@ class JedisConnectionHelper {
             int argIndex = argList.indexOf("--connectiontimeoutmillis");
             settings.setConnectionTimeoutMillis(Integer.parseInt(argList.get(argIndex + 1)));
         }
+        if (argList.contains("--maxidleconnections")) {
+            int argIndex = argList.indexOf("--maxidleconnections");
+            settings.setPoolMaxIdle(Integer.parseInt(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--maxwaitminutes")) {
+            int argIndex = argList.indexOf("--maxwaitminutes");
+            settings.setNumberOfMinutesForWaitDuration(Integer.parseInt(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--minidleconnections")) {
+            int argIndex = argList.indexOf("--minidleconnections");
+            settings.setPoolMinIdle(Integer.parseInt(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--numberevictiontests")) {
+            int argIndex = argList.indexOf("--numberevictiontests");
+            settings.setNumTestsPerEvictionRun(Integer.parseInt(argList.get(argIndex + 1)));
+        }
         if (argList.contains("--requesttimeoutmillis")) {
             int argIndex = argList.indexOf("--requesttimeoutmillis");
             settings.setRequestTimeoutMillis(Integer.parseInt(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--millisbetweenevictionruns")) {
+            int argIndex = argList.indexOf("--millisbetweenevictionruns");
+            settings.setTimeBetweenEvictionRunsMilliseconds(Integer.parseInt(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--millisminevictableidletime")) {
+            int argIndex = argList.indexOf("--millisminevictableidletime");
+            settings.setMinEvictableIdleTimeMilliseconds(Integer.parseInt(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--blockwhenexhausted")) {
+            int argIndex = argList.indexOf("--blockwhenexhausted");
+            settings.setBlockWhenExhausted(Boolean.parseBoolean(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--testwhileidle")) {
+            int argIndex = argList.indexOf("--testwhileidle");
+            settings.setTestWhileIdle(Boolean.parseBoolean(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--testonborrow")) {
+            int argIndex = argList.indexOf("--testonborrow");
+            settings.setTestOnBorrow(Boolean.parseBoolean(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--testonreturn")) {
+            int argIndex = argList.indexOf("--testonreturn");
+            settings.setTestOnReturn(Boolean.parseBoolean(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--testoncreate")) {
+            int argIndex = argList.indexOf("--testoncreate");
+            settings.setTestOnCreate(Boolean.parseBoolean(argList.get(argIndex + 1)));
         }
         if (argList.contains("--user")) {
             int argIndex = argList.indexOf("--user");
@@ -488,6 +532,8 @@ class JedisConnectionHelper {
         poolConfig.setMaxWait(Duration.ofMinutes(bs.getNumberOfMinutesForWaitDuration()));
         poolConfig.setTestOnCreate(bs.isTestOnCreate());
         poolConfig.setTestOnBorrow(bs.isTestOnBorrow());
+        poolConfig.setTestWhileIdle(bs.isTestWhileIdle());
+        poolConfig.setTestOnReturn(bs.isTestOnReturn());
         poolConfig.setNumTestsPerEvictionRun(bs.getNumTestsPerEvictionRun());
         poolConfig.setBlockWhenExhausted(bs.isBlockWhenExhausted());
         poolConfig.setMinEvictableIdleTime(Duration.ofMillis(bs.getMinEvictableIdleTimeMilliseconds()));
@@ -513,6 +559,7 @@ class JedisConnectionHelperSettings {
     private boolean testOnCreate = true;
     private boolean testOnBorrow = true;
     private boolean testOnReturn = true;
+    private boolean testWhileIdle = true;
     private int numTestsPerEvictionRun = 3;
     private boolean useSSL = false;
     private boolean usePassword = false;
@@ -612,6 +659,14 @@ class JedisConnectionHelperSettings {
         this.numberOfMinutesForWaitDuration = numberOfMinutesForWaitDuration;
     }
 
+    public boolean isTestWhileIdle() {
+        return testWhileIdle;
+    }
+
+    public void setTestWhileIdle(boolean testWhileIdle) {
+        this.testWhileIdle = testWhileIdle;
+    }
+
     public boolean isTestOnCreate() {
         return testOnCreate;
     }
@@ -688,7 +743,12 @@ class JedisConnectionHelperSettings {
         return "\nRedisUserName = "+getUserName()+"\nUsePassword = "+isUsePassword()+"\nUseSSL = "+isUseSSL()+ "\nRedisHost = "+getRedisHost()+
                 "\nRedisPort = "+getRedisPort()+"\nMaxConnections = "+getMaxConnections()+
                 "\nRequestTimeoutMilliseconds = "+getRequestTimeoutMillis()+"\nConnectionTimeOutMilliseconds = "+
-                getConnectionTimeoutMillis();
+                getConnectionTimeoutMillis()+"\ntestOnCreate = "+isTestOnCreate()+"\ntestOnBorrow = "+isTestOnBorrow()+
+                "\ntestOnReturn = "+isTestOnReturn()+"\nblockWhenExhausted = "+isBlockWhenExhausted()
+                +"\nminIdleConnections = "+getPoolMinIdle()
+                +"\ntimeBetweenEvictionRunsMilliseconds = "+getTimeBetweenEvictionRunsMilliseconds()
+                +"\nnumberEvictionTests = "+getNumTestsPerEvictionRun()
+                +"\nminEvictableIdleTimeMilliseconds = "+getMinEvictableIdleTimeMilliseconds();
     }
 
     public String getTrustStoreFilePath() {

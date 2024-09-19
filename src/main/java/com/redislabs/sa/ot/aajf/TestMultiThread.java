@@ -59,7 +59,7 @@ public class TestMultiThread implements Runnable{
                     }
                 }
             }catch(Throwable t){
-                System.out.println("checking for all threads being complete: "+t.getMessage());
+                System.out.println("Exception caught while checking for all threads being complete: "+t.getMessage() + "  " + t.getClass().getName());
             }
         }
         System.out.println("\n\n*****************\n" +
@@ -101,17 +101,27 @@ public class TestMultiThread implements Runnable{
         //cleanup old keys to help measure results:
         String keyName = "tmt:string:"+this.testThreadNumber;
         long expectedTotalIncrValue = 0; // update this during test
-        connectionInstance.del(keyName);
+        try{
+            connectionInstance.del(keyName);
+        }catch(redis.clients.jedis.exceptions.JedisException jce){
+            if(jce.getMessage().equalsIgnoreCase("Could not get a resource from the pool")){
+                System.out.println("Thread# "+this.testThreadNumber+" --> Could not get a resource from the pool\n"+
+                        "Going to retry that command...");
+                connectionInstance.del(keyName);
+            }
+        }
 
         //NOTE - set this as a startup parameter:
         boolean shouldAnounceDeltaBetweenException = false;
+        String lastException = null;
 
         long exceptionTimeStamp = 0;
         long taskExecutionStartTime = 0;
         for(long x=0;x<numberOfTasks;x++){
-            String connectionName = ""+connectionInstance;
+            String connectionName = ""+((JedisPooled)connectionInstance).getPool();
             taskExecutionStartTime = System.currentTimeMillis();
             try{
+
                 //connectionInstance.publish("ps:Messages",connectionName+":testThread# "+this.testThreadNumber+" message #"+x);
                 boolean pipelined=false;
                 if(x%20==0){
@@ -138,10 +148,10 @@ public class TestMultiThread implements Runnable{
                     }
                 }
                 if(x%10==0){ // reduce the noise...
-                    connectionInstance.publish("ps:messages","THREAD "+this.testThreadNumber+" task # "+x+" completed");
+                    connectionInstance.publish("ps:Messages","THREAD "+this.testThreadNumber+" task # "+x+" completed using "+connectionName);
                 }
                 if (shouldAnounceDeltaBetweenException) {
-                    //System.out.println("THREAD "+this.testThreadNumber+" First Succesful write after exception delay in millis was...: "+(System.currentTimeMillis()-exceptionTimeStamp));
+                    System.out.println("THREAD "+this.testThreadNumber+" recovered from Exception: ("+lastException+") First Succesful write after exception delay in millis was...: "+(System.currentTimeMillis()-exceptionTimeStamp));
                     shouldAnounceDeltaBetweenException=false;
                 }
                 long taskDuration = System.currentTimeMillis()-taskExecutionStartTime;
@@ -149,9 +159,18 @@ public class TestMultiThread implements Runnable{
                     System.out.println("\tTask duration in millis: "+taskDuration);
                 }
             }catch(redis.clients.jedis.exceptions.JedisException e){
-                //System.out.println("THREAD "+this.testThreadNumber+" CAUGHT: Exception "+e);
+                if(e.getMessage().equalsIgnoreCase("Could not get a resource from the pool")){
+                    System.out.println("\nThread# "+this.testThreadNumber+" --> Could not get a resource from the pool\n"+
+                            "Going to retry that command...\n");
+                    try{
+                        connectionInstance.publish("ps:Messages","\n 'Could not get a resource from the pool' \npool now looks like this: \n"+((JedisPooled)connectionInstance).getPool());
+                    }catch(Throwable g){}
+                }
+
+                //System.out.println("THREAD "+this.testThreadNumber+" CAUGHT: Exception "+e+"\n"+e.getMessage()+"\nThis Thread will retry the tasks...");
                 x--; // keep trying to do the next thing
                 shouldAnounceDeltaBetweenException=true;
+                lastException=e.getClass().getName()+": "+e.getMessage();
                 exceptionTimeStamp=System.currentTimeMillis();
             }
             /*  The following sleep is to give the client VM a rest when running many threads
