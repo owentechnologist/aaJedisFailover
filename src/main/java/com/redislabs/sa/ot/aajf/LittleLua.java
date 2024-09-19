@@ -11,7 +11,7 @@ public class LittleLua{
     public int playWithLists(UnifiedJedis connection,long taskNumber,long testThreadNumber){
         int responseValue = 0;//0 means do not change anything -1 means a retry is necessary
         String sharedListName = "sharedList{"+(taskNumber%100)+"}";
-        Transaction t = connection.multi();
+        Transaction t = (Transaction)connection.multi();
         Response<Long> result1 = t.lpush(sharedListName,jsonAsString+""+taskNumber);
         Response<Long> listLength = t.llen(sharedListName);
         t.exec();
