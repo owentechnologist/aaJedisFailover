@@ -143,23 +143,8 @@ class JedisConnectionHelper {
             = DefaultJedisClientConfig.builder().build();
 
     private static JedisConnectionHelperSettings statSettings = null;
-    //connection establishment
-    static UnifiedJedis initRedisConnection(String[] args){
-        boolean isFailover = false;
-        int maxConnections = 10;
-        JedisConnectionHelperSettings settings = new JedisConnectionHelperSettings();
-        JedisConnectionHelperSettings settings2 = null; // in case we are failing over
-        settings.setTestOnBorrow(true);
-        settings.setMaxConnections(maxConnections);
-        settings.setConnectionTimeoutMillis(1200);//overidden by args
-        settings.setNumberOfMinutesForWaitDuration(1);
-        settings.setNumTestsPerEvictionRun(10);
-        settings.setPoolMaxIdle(5); //this means less stale connections
-        settings.setPoolMinIdle(0);
-        settings.setRequestTimeoutMillis(100);//overidden by args
-        settings.setTestOnReturn(false); // if idle, they will be mostly removed anyway
-        settings.setTestOnCreate(true);
 
+    static JedisConnectionHelperSettings assignArgsToSettings(JedisConnectionHelperSettings settings,String[] args){
         ArrayList<String> argList = new ArrayList<>(Arrays.asList(args));
         if (argList.contains("--host")) {
             int argIndex = argList.indexOf("--host");
@@ -260,20 +245,32 @@ class JedisConnectionHelper {
             System.out.println("loading custom --usercertpass == " + userCertPassword);
             settings.setUserCertPassword(userCertPassword);
         }
+        if (argList.contains("--maxconnections")) {
+            int argIndex = argList.indexOf("--maxconnections");
+            settings.setMaxConnections(Integer.parseInt(argList.get(argIndex + 1)));
+        }
+        return settings;
+    }
+
+    //connection establishment
+    static UnifiedJedis initRedisConnection(String[] args){
+        boolean isFailover = false;
+        int maxConnections = 10;
+        JedisConnectionHelperSettings settings = new JedisConnectionHelperSettings();
+        JedisConnectionHelperSettings settings2 = null; // in case we are failing over
+        settings = assignArgsToSettings(settings,args);
+
+        ArrayList<String> argList = new ArrayList<>(Arrays.asList(args));
         // when turning on failover add --failover true
         if (argList.contains("--failover")) {
             int argIndex = argList.indexOf("--failover");
             isFailover = Boolean.parseBoolean(argList.get(argIndex + 1));
         }
-        if (argList.contains("--maxconnections")) {
-            int argIndex = argList.indexOf("--maxconnections");
-            settings.setMaxConnections(Integer.parseInt(argList.get(argIndex + 1)));
-        }
-
         //setting statSettings to the first settings object in case we are not using two sets:
         statSettings=settings;
         if (isFailover){
             settings2 = new JedisConnectionHelperSettings();
+            settings2 = assignArgsToSettings(settings2,args);
             if (argList.contains("--host2")) {
                 int argIndex = argList.indexOf("--host2");
                 settings2.setRedisHost(argList.get(argIndex + 1));
@@ -347,8 +344,24 @@ class JedisConnectionHelper {
         HostAndPort hostAndport = new HostAndPort(host,port);
         // Attempt to use same pool settings as the statSettings for closer comparison:
         //ConnectionPoolConfig statConfig = new ConnectionPoolConfig();
+        JedisConnectionHelperSettings bs = new JedisConnectionHelperSettings();
+        bs = assignArgsToSettings(bs,args);
+        GenericObjectPoolConfig<Connection> poolConfig = new ConnectionPoolConfig();
+        poolConfig.setMaxIdle(bs.getPoolMaxIdle());
+        poolConfig.setMaxTotal(bs.getMaxConnections());
+        poolConfig.setMinIdle(bs.getPoolMinIdle());
+        poolConfig.setMaxWait(Duration.ofMinutes(bs.getNumberOfMinutesForWaitDuration()));
+        poolConfig.setTestOnCreate(bs.isTestOnCreate());
+        poolConfig.setTestOnBorrow(bs.isTestOnBorrow());
+        poolConfig.setTestWhileIdle(bs.isTestWhileIdle());
+        poolConfig.setTestOnReturn(bs.isTestOnReturn());
+        poolConfig.setNumTestsPerEvictionRun(bs.getNumTestsPerEvictionRun());
+        poolConfig.setBlockWhenExhausted(bs.isBlockWhenExhausted());
+        poolConfig.setMinEvictableIdleTime(Duration.ofMillis(bs.getMinEvictableIdleTimeMilliseconds()));
+        poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(bs.getTimeBetweenEvictionRunsMilliseconds()));
+
         JedisCluster jc = new JedisCluster(hostAndport, DEFAULT_CLIENT_CONFIG, DEFAULT_REDIRECTIONS,
-                DEFAULT_POOL_CONFIG);
+                poolConfig);
         System.out.println("***>  This many nodes in this cluster: "+jc.getClusterNodes().size());
         for(String item : jc.getClusterNodes().keySet()) {
             System.out.println("***>  "+item);

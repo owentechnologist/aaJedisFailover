@@ -118,7 +118,12 @@ public class TestMultiThread implements Runnable{
         long exceptionTimeStamp = 0;
         long taskExecutionStartTime = 0;
         for(long x=0;x<numberOfTasks;x++){
-            String connectionName = ""+((JedisPooled)connectionInstance).getPool();
+            String connectionName = null;
+            try{
+                connectionName = ""+((JedisPooled)connectionInstance).getPool();
+            }catch(java.lang.ClassCastException cce){
+                connectionName = "ossClusterAPIConnection";
+            }
             taskExecutionStartTime = System.currentTimeMillis();
             try{
 
