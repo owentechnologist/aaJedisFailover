@@ -330,6 +330,7 @@ class JedisConnectionHelper {
     static JedisCluster getJedisClusterConnection(String[] args){
         String host = "redis-12000.re-cluster2.ps-redislabs.org";
         int port = 12000;
+        int redirections = 5;
 
         ArrayList<String> argList = new ArrayList<>(Arrays.asList(args));
         if (argList.contains("--clusterhost")) {
@@ -339,6 +340,10 @@ class JedisConnectionHelper {
         if (argList.contains("--clusterport")) {
             int argIndex = argList.indexOf("--clusterport");
             port=(Integer.parseInt(argList.get(argIndex + 1)));
+        }
+        if (argList.contains("--ossredirections")) {
+            int argIndex = argList.indexOf("--ossredirections");
+            redirections=(Integer.parseInt(argList.get(argIndex + 1)));
         }
 
         HostAndPort hostAndport = new HostAndPort(host,port);
@@ -360,7 +365,14 @@ class JedisConnectionHelper {
         poolConfig.setMinEvictableIdleTime(Duration.ofMillis(bs.getMinEvictableIdleTimeMilliseconds()));
         poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(bs.getTimeBetweenEvictionRunsMilliseconds()));
 
-        JedisCluster jc = new JedisCluster(hostAndport, DEFAULT_CLIENT_CONFIG, DEFAULT_REDIRECTIONS,
+
+        DefaultJedisClientConfig cConfig=null;
+        if (argList.contains("--password")){
+            cConfig = DefaultJedisClientConfig.builder().password(bs.getPassword()).build();
+        }else{
+            cConfig = DefaultJedisClientConfig.builder().build();
+        }
+        JedisCluster jc = new JedisCluster(hostAndport, cConfig, redirections,
                 poolConfig);
         System.out.println("***>  This many nodes in this cluster: "+jc.getClusterNodes().size());
         for(String item : jc.getClusterNodes().keySet()) {

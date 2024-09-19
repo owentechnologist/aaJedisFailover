@@ -1,5 +1,6 @@
 package com.redislabs.sa.ot.aajf;
 import redis.clients.jedis.UnifiedJedis;
+import redis.clients.jedis.JedisCluster;
 import redis.clients.jedis.JedisPooled;
 import redis.clients.jedis.Pipeline;
 import redis.clients.jedis.PipelineBase;
@@ -108,6 +109,8 @@ public class TestMultiThread implements Runnable{
                 System.out.println("Thread# "+this.testThreadNumber+" --> Could not get a resource from the pool\n"+
                         "Going to retry that command...");
                 connectionInstance.del(keyName);
+            }else{
+                jce.printStackTrace();
             }
         }
 
@@ -122,6 +125,7 @@ public class TestMultiThread implements Runnable{
             try{
                 connectionName = ""+((JedisPooled)connectionInstance).getPool();
             }catch(java.lang.ClassCastException cce){
+                //connectionName = ((JedisCluster)getConnectionFromSlot(0)).toIdentityString();
                 connectionName = "ossClusterAPIConnection";
             }
             taskExecutionStartTime = System.currentTimeMillis();
@@ -169,7 +173,11 @@ public class TestMultiThread implements Runnable{
                             "Going to retry that command...\n");
                     try{
                         connectionInstance.publish("ps:Messages","\n 'Could not get a resource from the pool' \npool now looks like this: \n"+((JedisPooled)connectionInstance).getPool());
-                    }catch(Throwable g){}
+                    }catch(Throwable g){
+                        connectionInstance.publish("ps:Messages","\nThread# "+this.testThreadNumber+"  'Could not get a resource from the pool' "+connectionName);
+                    }
+                }else{
+                    e.printStackTrace();
                 }
 
                 //System.out.println("THREAD "+this.testThreadNumber+" CAUGHT: Exception "+e+"\n"+e.getMessage()+"\nThis Thread will retry the tasks...");
