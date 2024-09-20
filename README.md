@@ -101,3 +101,71 @@ tasks that round-trip take more than 3000 milliseconds by defautlt.  Adjust this
 ``` 
 
 See the Main class for more args...
+
+Below are many sample test runs designed to illustrate impact of Jedis settings:
+
+```
+*** Jedis Pool Settings showcase:
+
+Poor results / failure because socketConnection is too short:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host FIXME.remote.com --port 10000  --password FIXME.remote.com --maxconnections 10 --requesttimeoutmillis 20 --maxwaitminutes 1 --latencythreshold 100 --taskcount 5 --numclientthreads 3 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate true --testwhileidle false --connectiontimeoutmillis 1"
+
+readTimeout 20 millis fails even as socketConnection timeout good at 50 millis:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host FIXME.remote.com --port 10000  --password FIXME --maxconnections 10 --maxwaitminutes 1 --latencythreshold 100 --taskcount 5 --numclientthreads 3 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate true --testwhileidle false --connectiontimeoutmillis 75 --requesttimeoutmillis 20"
+
+Fixed readTimeout and socketConnection timeout but need co-location:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host FIXME.remote.com --port 10000  --password FIXME --maxconnections 10 --maxwaitminutes 1 --latencythreshold 100 --taskcount 5 --numclientthreads 3 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate true --testwhileidle false  --connectiontimeoutmillis 75 --requesttimeoutmillis 50"
+
+*** Co-location!!! ***
+
+Can still have Poor results /failures because readTimeout is 4 millis:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-10900.re-cluster1.ps-redislabs.org --port 10900 --maxconnections 2 --maxwaitminutes 1 --latencythreshold 90 --taskcount 5 --numclientthreads 3 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow true --testonreturn true --testoncreate true --testWhileIdle false --connectiontimeoutmillis 10 --requesttimeoutmillis 4"
+
+Broken because blockWhenExhausted is false and there are more threads than connections in pool:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-10900.re-cluster1.ps-redislabs.org --port 10900 --maxwaitminutes 1 --latencythreshold 90 --taskcount 5 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --testonborrow false --testonreturn false --testoncreate true --testWhileIdle false --connectiontimeoutmillis 10 --requesttimeoutmillis 20 --maxconnections 2 --numclientthreads 3 --blockwhenexhausted false"
+
+Broken because maxwaitminutes is 0 and blockWhenExhausted is true: 
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-10900.re-cluster1.ps-redislabs.org --port 10900 --latencythreshold 90 --taskcount 5 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --testonborrow false --testonreturn false --testoncreate true --testWhileIdle false --connectiontimeoutmillis 10 --requesttimeoutmillis 20 --maxconnections 2 --numclientthreads 3 --blockwhenexhausted true --maxwaitminutes 0"
+
+Fixed because, blockWhenExhausted is true and maxwaitminutes is 1
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-10900.re-cluster1.ps-redislabs.org --port 10900 --latencythreshold 90 --taskcount 5 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --testonborrow false --testonreturn false --testoncreate true --testWhileIdle false --connectiontimeoutmillis 10 --requesttimeoutmillis 20 --maxconnections 2 --numclientthreads 3 --blockwhenexhausted true --maxwaitminutes 1"
+
+Slower results because testOnBorrow and return is true:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-10900.re-cluster1.ps-redislabs.org --port 10900 --connectiontimeoutmillis 10 --maxconnections 2 --requesttimeoutmillis 20 --maxwaitminutes 1 --latencythreshold 90 --taskcount 5 --numclientthreads 3 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow true --testonreturn true --testoncreate true"
+
+Even Slower results because only 1 connection and test on return and borrow:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-10900.re-cluster1.ps-redislabs.org --port 10900 --connectiontimeoutmillis 10 --requesttimeoutmillis 20 --maxwaitminutes 1 --latencythreshold 90 --taskcount 5 --numclientthreads 3 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow true --testonreturn true --testoncreate true --testwhileidle false --maxconnections 1"
+
+Faster results because only 1 connection but no testOnBorrow or return:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-10900.re-cluster1.ps-redislabs.org --port 10900 --connectiontimeoutmillis 10 --requesttimeoutmillis 20 --maxwaitminutes 1 --latencythreshold 90 --taskcount 5 --numclientthreads 3 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate true --testwhileidle false --maxconnections 1"
+
+Fast results because 10 connections and only test on create:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-10900.re-cluster1.ps-redislabs.org --port 10900 --connectiontimeoutmillis 10 --requesttimeoutmillis 20 --maxwaitminutes 1 --latencythreshold 90 --taskcount 5 --numclientthreads 3 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate true --testwhileidle false --maxconnections 10"
+
+Testing with 50 millis latency threshold: ( have been using 90 millis ):
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-10900.re-cluster1.ps-redislabs.org --port 10900  --connectiontimeoutmillis 10 --requesttimeoutmillis 20 --maxwaitminutes 1 --taskcount 5 --numclientthreads 3 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate true --testwhileidle false --maxconnections 10 --latencythreshold 50"
+
+Same as above but now not testing on Create: (not really noticeable)
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host redis-10900.re-cluster1.ps-redislabs.org --port 10900  --connectiontimeoutmillis 10 --requesttimeoutmillis 20 --maxwaitminutes 1 --taskcount 5 --numclientthreads 3 --minidleconnections 0 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate false --testwhileidle false --maxconnections 10 --latencythreshold 50"
+
+*** OSS CLusterAPI ossredirections == silent retries ***
+
+SLOW: With 10 connections per endpoint 500 threads:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--clusterhost redis-12000.re-cluster1.ps-redislabs.org --clusterport 12000  --connectiontimeoutmillis 10 --maxconnections 10 --requesttimeoutmillis 20 --maxwaitminutes 1 --latencythreshold 750 --taskcount 5 --numclientthreads 500 --minidleconnections 16 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate false --testwhileidle true --useclusterapi true --ossredirections 10"
+
+FAST: With 100 connections per endpoint 500 threads:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--clusterhost redis-12000.re-cluster1.ps-redislabs.org --clusterport 12000  --connectiontimeoutmillis 10 --maxconnections 100 --requesttimeoutmillis 20 --maxwaitminutes 1 --latencythreshold 750 --taskcount 5 --numclientthreads 500 --minidleconnections 10 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate false --testwhileidle true --useclusterapi true --ossredirections 3"
+
+FAST: (moved retries [ossredirections] has no impact when healthy): 
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--clusterhost redis-12000.re-cluster1.ps-redislabs.org --clusterport 12000  --connectiontimeoutmillis 10 --maxconnections 100 --requesttimeoutmillis 20 --maxwaitminutes 1 --latencythreshold 750 --taskcount 5 --numclientthreads 500 --minidleconnections 10 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate false --testwhileidle true --useclusterapi true --ossredirections 100"
+
+
+Remote OSS ClusterAPI - 10 connections Socket Timeout evidenced with small retry:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--clusterhost ClusterAPI.FIXME.com --clusterport 10000 --password FIXME --maxconnections 10 --maxwaitminutes 1 --latencythreshold 750 --taskcount 5 --numclientthreads 50 --minidleconnections 10 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate true --testwhileidle true --useclusterapi true --ossredirections 3 --connectiontimeoutmillis 40 --requesttimeoutmillis 30"
+
+Remote OSS ClusterAPI - 10 connections Socket Timeout hidden with large retry:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--clusterhost ClusterAPI.FIXME.com --clusterport 10000 --password FIXME --maxconnections 10 --maxwaitminutes 1 --latencythreshold 750 --taskcount 5 --numclientthreads 50 --minidleconnections 10 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate true --testwhileidle true --useclusterapi true --ossredirections 30 --connectiontimeoutmillis 40 --requesttimeoutmillis 30"
+
+Remote OSS ClusterAPI - 100 connections Socket Timeout hidden with large retry:
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--clusterhost ClusterAPI.FIXME.com --clusterport 10000 --password FIXME --maxconnections 100 --maxwaitminutes 1 --latencythreshold 750 --taskcount 5 --numclientthreads 50 --minidleconnections 10 --numberevictiontests 1 --millisminevictableidletime 2 --blockwhenexhausted true --testonborrow false --testonreturn false --testoncreate true --testwhileidle true --useclusterapi true --ossredirections 30 --connectiontimeoutmillis 40 --requesttimeoutmillis 30"
+```
