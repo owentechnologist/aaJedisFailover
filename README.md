@@ -1,4 +1,18 @@
-This example showcases how Jedis can be configured to failover between two instances of Redis.  It also tests running multiple client Threads against one or more Redis endpoints.
+There are multiple strategies for failing over using client-side logic.
+Concerns when performing failovers include:
+
+* Failing Back
+* Encouraging agreement regarding a healthy endpoint across multiple client instances within a JVM as well as across multiple VMs
+* Reducing time taken to Failover/ Failback to accomodate use cases with many mutations to keys 
+
+There are currently two strategies to enable failing over using client-side logic:
+1. using the MultiClusterProvider included in Jedis (this example)
+2. using an additional library based on Guava's strategy for determining agreeable service endpoints (not part of this example) For more information on this failback-ready solution contact the Redis team, or check out the Guava framework here and build your own: https://github.com/google/guava/blob/2076b8ecbf78625bfa2cdb3c56d14020371ad692/guava-tests/test/com/google/common/util/concurrent/ServiceManagerTest.java#L60 
+
+
+This example showcases the use of the MultiClusterProvider which does not include failback and also does not as of 2025-01-01 utilize the Availability API for Redis.  
+
+This example shows how Jedis can be configured to failover between two instances of Redis.  It also tests running multiple client Threads against one or more Redis endpoints.
 
 The Main class executes a thread where it reads and writes to some keys repeatedly.  If the redis instance it is talking to becomes unavailable, it  switches to a back up instance after a configured # of retries.
 
